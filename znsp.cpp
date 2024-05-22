@@ -40,8 +40,6 @@ static uint16_t const crc16Table[256] = {
 ZNSP::ZNSP(QSettings *config, QObject *parent) : Adapter(config, parent) //WIP
 {
     m_packet_seq = 0;
-    m_tsn = 0;
-    m_ack_seq = -1;
 
     m_networkKey = QByteArray::fromHex(config->value("security/key", "000102030405060708090a0b0c0d0e0f").toString().remove("0x").toUtf8());
     
@@ -183,195 +181,139 @@ quint16 ZNSP::getCRC16(quint8 *data, quint32 length)
     return crc;
 }
 
-bool ZNSP::sendRequest(quint16 command, const QByteArray &data) //WIP
+bool ZNSP::sendRequest(quint16 command, const QByteArray &data) //ready
 {
-    QByteArray request, crc_llheader, common;
-    lowLeverHeaderStruct llheader;
-    commonHeaderStruct commonHead;
+    QByteArray request;
+    frameHeaderStruct header;
     quint16 crc;
-
-    commonHead.version = ZBOSS_PROTOCOL_VERSION;
-    commonHead.type = REQUEST;
-    commonHead.id = command;
 
     m_command = command;
 
-    common = QByteArray(reinterpret_cast <char*> (&commonHead), sizeof(commonHead));
-    common.append(getTSN());
-    common.append(data);
+    header.flags = 0x00;
+    header.type = REQUEST;
+    header.id = command;
+    header.sequence = getSeq();
+    header.length = data.length();
 
-    llheader.signature = qToBigEndian <quint16> (ZBOSS_SIGNATURE);
-    llheader.length = common.length() + 7;
-    llheader.type = ZBOSS_NCP_API_HL;
-    llheader.flags = FIRST_FRAG | LAST_FRAG | m_packet_seq << 2;
-    llheader.CRC = 0;
+    crc = getCRC16(reinterpret_cast <quint8*> (data.data()), data.length());
 
-    m_packet_seq = (m_packet_seq % 3) + 1;
-
-    crc_llheader.append(reinterpret_cast <char*> (&llheader.length), sizeof(llheader.length));
-    crc_llheader.append(llheader.type);
-    crc_llheader.append(llheader.flags);
-    llheader.CRC = getCRC8(reinterpret_cast <quint8*> (crc_llheader.data()), crc_llheader.length());
-
-    request = QByteArray(reinterpret_cast <char*> (&llheader), sizeof(llheader));
+    request = QByteArray(reinterpret_cast <char*> (&header), sizeof(header));
+    request.append(data);
+    request.append(reinterpret_cast <char*> (&crc), sizeof(crc));
 
     if (m_adapterDebug)
         logInfo << "-->" << request.toHex(':');
-
-    crc = getCRC16(reinterpret_cast <quint8*> (common.data()), common.length());
-    request.append(reinterpret_cast <char*> (&crc), sizeof(crc));
-    request.append(common);
 
     sendData(request);
     return waitForSignal(this, SIGNAL(dataReceived()), ZBOSS_REQUEST_TIMEOUT);
 }
 
-void ZNSP::sendAck() //WIP
-{
-    QByteArray request, crc_llheader;
-    lowLeverHeaderStruct llheader;
-
-    llheader.signature = qToBigEndian <quint16> (ZBOSS_SIGNATURE);
-    llheader.length = 7;
-    llheader.type = ZBOSS_NCP_API_HL;
-    llheader.flags = IS_ACK | m_ack_seq << 4;
-    llheader.CRC = 0;
-
-    m_ack_seq = (m_ack_seq + 1) % 4;
-
-    crc_llheader.append(reinterpret_cast <char*> (&llheader.length), sizeof(llheader.length));
-    crc_llheader.append(llheader.type);
-    crc_llheader.append(llheader.flags);
-    llheader.CRC = getCRC8(reinterpret_cast <quint8*> (crc_llheader.data()), crc_llheader.length());
-
-    request = QByteArray(reinterpret_cast <char*> (&llheader), sizeof(llheader));
-
-    if (m_adapterDebug)
-        logInfo << "-->" << request.toHex(':');
-
-    sendData(request);
-}
-
 void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //WIP
 {
-    if (command == 0x00)
-        return;
-
     if (m_adapterDebug)
         logInfo << "<--" << QString::asprintf("0x%04x", qFromBigEndian(command)) << data.toHex(':');
 
     switch (qFromBigEndian(command))
     {
-        case APSDE_DATA_IND:
-        {
-            const apsdeDataIndicatonStruct *message = reinterpret_cast <const apsdeDataIndicatonStruct*> (data.mid(0, sizeof(apsdeDataIndicatonStruct)).constData());
-            QByteArray payload = data.mid(sizeof(apsdeDataIndicatonStruct), message->dataLength);
-            emit zclMessageReveived(message->srcNetworkAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
-            break;
-        }
+        // case APSDE_DATA_IND:
+        // {
+        //     const apsdeDataIndicatonStruct *message = reinterpret_cast <const apsdeDataIndicatonStruct*> (data.mid(0, sizeof(apsdeDataIndicatonStruct)).constData());
+        //     QByteArray payload = data.mid(sizeof(apsdeDataIndicatonStruct), message->dataLength);
+        //     emit zclMessageReveived(message->srcNetworkAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
+        //     break;
+        // }
 
-        case ZBOSS_ZDO_NODE_DESC_REQ:
-        {
-            const zdoNodeDescriptorResponseStruct *message = reinterpret_cast <const zdoNodeDescriptorResponseStruct*> (data.mid(3, sizeof(zdoNodeDescriptorResponseStruct)).constData());
-            QByteArray payload;
-            quint8 logicalType = message->flags & 0x0003;
-            quint8 apsFlags = message->flags & 0x0700;
-            quint16 address = message->networkAddress;
+        // case ZBOSS_ZDO_NODE_DESC_REQ:
+        // {
+        //     const zdoNodeDescriptorResponseStruct *message = reinterpret_cast <const zdoNodeDescriptorResponseStruct*> (data.mid(3, sizeof(zdoNodeDescriptorResponseStruct)).constData());
+        //     QByteArray payload;
+        //     quint8 logicalType = message->flags & 0x0003;
+        //     quint8 apsFlags = message->flags & 0x0700;
+        //     quint16 address = message->networkAddress;
 
-            payload.append(static_cast <char> (0x00));
-            payload.append(reinterpret_cast <const char*> (&message->networkAddress), sizeof(message->networkAddress));
-            payload.append(logicalType);
-            payload.append(apsFlags);
-            payload.append(message->macCpb);
-            payload.append(reinterpret_cast <const char*> (&message->manufacturerCode), sizeof(message->manufacturerCode));
-            payload.append(message->maxBufferSize);
-            payload.append(reinterpret_cast <const char*> (&message->maxTransferSize), sizeof(message->maxTransferSize));
-            payload.append(reinterpret_cast <const char*> (&message->serverMask), sizeof(message->serverMask));
-            payload.append(reinterpret_cast <const char*> (&message->maxOutTransferSize), sizeof(message->maxOutTransferSize));
-            payload.append(message->descriptorCapabilities);
+        //     payload.append(static_cast <char> (0x00));
+        //     payload.append(reinterpret_cast <const char*> (&message->networkAddress), sizeof(message->networkAddress));
+        //     payload.append(logicalType);
+        //     payload.append(apsFlags);
+        //     payload.append(message->macCpb);
+        //     payload.append(reinterpret_cast <const char*> (&message->manufacturerCode), sizeof(message->manufacturerCode));
+        //     payload.append(message->maxBufferSize);
+        //     payload.append(reinterpret_cast <const char*> (&message->maxTransferSize), sizeof(message->maxTransferSize));
+        //     payload.append(reinterpret_cast <const char*> (&message->serverMask), sizeof(message->serverMask));
+        //     payload.append(reinterpret_cast <const char*> (&message->maxOutTransferSize), sizeof(message->maxOutTransferSize));
+        //     payload.append(message->descriptorCapabilities);
 
-            emit zdoMessageReveived(address, ZDO_NODE_DESCRIPTOR_REQUEST, payload);
-            break;
-        }
+        //     emit zdoMessageReveived(address, ZDO_NODE_DESCRIPTOR_REQUEST, payload);
+        //     break;
+        // }
 
-        case ZBOSS_ZDO_SIMPLE_DESC_REQ:
-        {
-            const zdoSimpleDescriptorResponseStruct *message = reinterpret_cast <const zdoSimpleDescriptorResponseStruct*> (data.mid(3, sizeof(zdoSimpleDescriptorResponseStruct)).constData());
-            quint8 offset = sizeof(zdoSimpleDescriptorResponseStruct) + (2 * message->inpClusterCount) + (2 * message->outClusterCount);
-            QByteArray buffer = data.mid(3 + offset, 2);
-            QByteArray payload;
-            quint16 networkAddress;
-            memcpy(&networkAddress, buffer.constData(), sizeof(networkAddress));
+        // case ZBOSS_ZDO_SIMPLE_DESC_REQ:
+        // {
+        //     const zdoSimpleDescriptorResponseStruct *message = reinterpret_cast <const zdoSimpleDescriptorResponseStruct*> (data.mid(3, sizeof(zdoSimpleDescriptorResponseStruct)).constData());
+        //     quint8 offset = sizeof(zdoSimpleDescriptorResponseStruct) + (2 * message->inpClusterCount) + (2 * message->outClusterCount);
+        //     QByteArray buffer = data.mid(3 + offset, 2);
+        //     QByteArray payload;
+        //     quint16 networkAddress;
+        //     memcpy(&networkAddress, buffer.constData(), sizeof(networkAddress));
 
-            payload.append(static_cast <char> (0x00));
-            payload.append(networkAddress);
-            payload.append(static_cast <char> (0x00));
-            payload.append(message->endpointId);
-            payload.append(reinterpret_cast <const char*> (&message->profileId), sizeof(message->profileId));
-            payload.append(reinterpret_cast <const char*> (&message->deviceId), sizeof(message->deviceId));
-            payload.append(message->version);
+        //     payload.append(static_cast <char> (0x00));
+        //     payload.append(networkAddress);
+        //     payload.append(static_cast <char> (0x00));
+        //     payload.append(message->endpointId);
+        //     payload.append(reinterpret_cast <const char*> (&message->profileId), sizeof(message->profileId));
+        //     payload.append(reinterpret_cast <const char*> (&message->deviceId), sizeof(message->deviceId));
+        //     payload.append(message->version);
 
-            emit zdoMessageReveived(networkAddress, ZDO_SIMPLE_DESCRIPTOR_REQUEST, payload);
-            break;
-        }
+        //     emit zdoMessageReveived(networkAddress, ZDO_SIMPLE_DESCRIPTOR_REQUEST, payload);
+        //     break;
+        // }
 
-        case ZBOSS_ZDO_ACTIVE_EP_REQ:
-        {
-            QByteArray buffer = data.mid(3, sizeof(quint8));
-            quint8 count, offset;
-            quint16 networkAddress;
-            QByteArray payload;
+        // case ZBOSS_ZDO_ACTIVE_EP_REQ:
+        // {
+        //     QByteArray buffer = data.mid(3, sizeof(quint8));
+        //     quint8 count, offset;
+        //     quint16 networkAddress;
+        //     QByteArray payload;
 
-            memcpy(&count, buffer.constData(), sizeof(count));
-            offset = sizeof(count) + (1 * count);
-            buffer = data.mid(3 + offset, 2);            
-            memcpy(&networkAddress, buffer.constData(), sizeof(networkAddress));
+        //     memcpy(&count, buffer.constData(), sizeof(count));
+        //     offset = sizeof(count) + (1 * count);
+        //     buffer = data.mid(3 + offset, 2);            
+        //     memcpy(&networkAddress, buffer.constData(), sizeof(networkAddress));
 
-            payload.append(static_cast <char> (0x00));
-            payload.append(reinterpret_cast <const char*> (&networkAddress), sizeof(networkAddress));
-            payload.append(count);
-            for (int i = 0; i < count; i++)
-                payload.append(data.mid(3 + sizeof(count) + i, 1));
+        //     payload.append(static_cast <char> (0x00));
+        //     payload.append(reinterpret_cast <const char*> (&networkAddress), sizeof(networkAddress));
+        //     payload.append(count);
+        //     for (int i = 0; i < count; i++)
+        //         payload.append(data.mid(3 + sizeof(count) + i, 1));
             
-            emit zdoMessageReveived(networkAddress, ZDO_ACTIVE_ENDPOINTS_REQUEST, payload);
-            break;
-        }
+        //     emit zdoMessageReveived(networkAddress, ZDO_ACTIVE_ENDPOINTS_REQUEST, payload);
+        //     break;
+        // }
 
-        case ZBOSS_ZDO_DEV_ANNCE_IND:
-        {
-            quint64 ieeeAddress;
-            const deviceAnnounceIndicatonStruct *message = reinterpret_cast <const deviceAnnounceIndicatonStruct*> (data.constData());
-            ieeeAddress = qToBigEndian <quint64> (message->ieeeAddress);
-            emit deviceJoined(QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress)), message->networkAddress);
-            break;
-        }
+        // case ZBOSS_ZDO_DEV_ANNCE_IND:
+        // {
+        //     quint64 ieeeAddress;
+        //     const deviceAnnounceIndicatonStruct *message = reinterpret_cast <const deviceAnnounceIndicatonStruct*> (data.constData());
+        //     ieeeAddress = qToBigEndian <quint64> (message->ieeeAddress);
+        //     emit deviceJoined(QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress)), message->networkAddress);
+        //     break;
+        // }
 
-        case NWK_LEAVE_IND:
-        {
-            const nwkLeaveStruct *message = reinterpret_cast <const nwkLeaveStruct*> (data.constData());
-            quint64 ieeeAddress = qToBigEndian <quint64> (message->ieeeAddress);
-            emit deviceLeft(QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress)));
-            break;
-        }
+        // case NWK_LEAVE_IND:
+        // {
+        //     const nwkLeaveStruct *message = reinterpret_cast <const nwkLeaveStruct*> (data.constData());
+        //     quint64 ieeeAddress = qToBigEndian <quint64> (message->ieeeAddress);
+        //     emit deviceLeft(QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress)));
+        //     break;
+        // }
 
         default:
         {
             if ((type == RESPONSE) && (m_command == qFromBigEndian(command)))
             {
-                if ((m_tsn == static_cast <quint8> (data.at(0))))
+                if ((m_packet_seq == static_cast <quint8> (data.at(0))))
                 {
                     emit dataReceived();
-
-                    if (qFromBigEndian(command) == ZBOSS_NCP_RESET_IND) {
-                        if (!startCoordinator())
-                        {
-                            logWarning << "Coordinator startup failed";
-                            return;
-                        }
-
-                        m_resetTimer->stop();
-                        return;
-                    }
 
                     m_replyStatus = static_cast <quint8> (data.at(2));
                     m_replyData = data.mid(3, data.length() - 3);
@@ -490,12 +432,17 @@ bool ZNSP::startCoordinator(void) //WIP
     return true;
 }
 
-void ZNSP::softReset(void) //WIP
+void ZNSP::softReset(void) //ready
 {
     m_packet_seq = 0;
-    m_tsn = 0;
-    m_ack_seq = -1;
-    sendRequest(ZBOSS_NCP_RESET_IND, QByteArray(1, 0x01));    
+    if (!startCoordinator())
+    {
+        logWarning << "Coordinator startup failed";
+        return;
+    }
+
+    m_resetTimer->stop();
+    return;  
 }
 
 void ZNSP::parseData(QByteArray &buffer) //ready
@@ -524,9 +471,9 @@ void ZNSP::parseData(QByteArray &buffer) //ready
     }
 }
 
-bool ZNSP::permitJoin(bool enabled) //WIP
+bool ZNSP::permitJoin(bool enabled) //ready
 {
-    if (!sendRequest(ZBOSS_ZDO_PERMIT_JOINING_REQ, QByteArray(2, 0x00).append(1, enabled ? 0xFF : 0x00).append(0x01)) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_PERMIT_JOINING, QByteArray(1, enabled ? 0xFF : 0x00)) || m_replyStatus)
     {
         logWarning << "Form network failed";
         return false;
@@ -534,16 +481,17 @@ bool ZNSP::permitJoin(bool enabled) //WIP
     return true;
 }
 
-void ZNSP::handleQueue(void) //WIP
+void ZNSP::handleQueue(void) //ready
 {
     while (!m_queue.isEmpty())
     {
         QByteArray packet = m_queue.dequeue();
         quint16 command;
+        int length = static_cast <int> (static_cast <char> (packet.at(6)) + static_cast <char> (packet.at(5)));
         memcpy(&command, packet.mid(2, 2).constData(), sizeof(command));
         
         quint8 type = static_cast <quint8> (packet.at(1));
-        parsePacket(type, qFromBigEndian(command), packet.mid(3));
+        parsePacket(type, qFromBigEndian(command), packet.mid(4, length - 2));
         sendAck();
     }
 }
