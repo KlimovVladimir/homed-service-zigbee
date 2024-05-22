@@ -3,6 +3,11 @@
 
 #define ZNPS_REQUEST_TIMEOUT                       15000
 
+#define SLIP_END                                    0xC0
+#define SLIP_ESC                                    0xDB
+#define SLIP_ESC_END                                0xDC
+#define SLIP_ESC_ESC                                0xDD
+
 //Control Type
 #define REQUEST                                     0x00
 #define RESPONSE                                    0x10
@@ -402,6 +407,7 @@ private:
 
     quint16 m_command;
     QByteArray m_replyData;
+    bool m_commandReply;
 
     QByteArray m_networkKey;
     QList <setTCPolicyStruct> m_policy;
@@ -429,6 +435,7 @@ private slots:
 signals:
 
     void dataReceived(void);
+    void notifyReceived(void);
 
 };
 

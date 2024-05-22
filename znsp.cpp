@@ -181,19 +181,20 @@ quint16 ZNSP::getCRC16(quint8 *data, quint32 length)
     return crc;
 }
 
-bool ZNSP::sendRequest(quint16 command, const QByteArray &data) //ready
+bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //WIP
 {
     QByteArray request;
     frameHeaderStruct header;
     quint16 crc;
 
     m_command = command;
+    m_commandReply = data.isEmpty();
 
     header.flags = 0x00;
     header.type = REQUEST;
     header.id = command;
     header.sequence = getSeq();
-    header.length = data.length();
+    header.length = data.length() + 2;
 
     crc = getCRC16(reinterpret_cast <quint8*> (data.data()), data.length());
 
@@ -205,7 +206,10 @@ bool ZNSP::sendRequest(quint16 command, const QByteArray &data) //ready
         logInfo << "-->" << request.toHex(':');
 
     sendData(request);
-    return waitForSignal(this, SIGNAL(dataReceived()), ZBOSS_REQUEST_TIMEOUT);
+    if (notify)
+        return waitForSignal(this, SIGNAL(notifyReceived()), ZBOSS_REQUEST_TIMEOUT);
+    else
+        return waitForSignal(this, SIGNAL(dataReceived()), ZBOSS_REQUEST_TIMEOUT);
 }
 
 void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //WIP
@@ -309,16 +313,33 @@ void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //W
 
         default:
         {
-            if ((type == RESPONSE) && (m_command == qFromBigEndian(command)))
+            if (m_command == qFromBigEndian(command))
             {
                 if ((m_packet_seq == static_cast <quint8> (data.at(0))))
                 {
-                    emit dataReceived();
+                    if (type == RESPONSE)
+                    {
+                        if (m_commandReply && (qFromBigEndian(command) != ZNSP_NETWORK_INIT))
+                        {
+                            m_replyStatus = 0x00;
+                            m_replyData = data.mid(3, data.length() - 3);
+                        }
+                        else
+                        {
+                            m_replyStatus = static_cast <quint8> (data.at(3));
+                        }
 
-                    m_replyStatus = static_cast <quint8> (data.at(2));
-                    m_replyData = data.mid(3, data.length() - 3);
+                        emit dataReceived();
+                        return;
+                    }
+                    else if (type == INDICATION)
+                    {
+                        m_replyStatus = 0x00;
+                        m_replyData = data.mid(3, data.length() - 3);
+                        emit notifyReceived();
+                        return;
+                    }
                 }
-                return;
             }
 
             logWarning << "Unrecognized ZBoss command" << QString::asprintf("0x%04x", qFromBigEndian(command)) << "with data" << (data.isEmpty() ? "(empty)" : data.toHex(':'));
@@ -445,7 +466,7 @@ void ZNSP::softReset(void) //ready
     return;  
 }
 
-void ZNSP::parseData(QByteArray &buffer) //ready
+void ZNSP::parseData(QByteArray &buffer) //WIP
 {
     while (!buffer.isEmpty())
     {
@@ -481,7 +502,7 @@ bool ZNSP::permitJoin(bool enabled) //ready
     return true;
 }
 
-void ZNSP::handleQueue(void) //ready
+void ZNSP::handleQueue(void) //WIP
 {
     while (!m_queue.isEmpty())
     {
