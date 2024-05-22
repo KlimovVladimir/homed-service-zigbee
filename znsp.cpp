@@ -181,20 +181,69 @@ quint16 ZNSP::getCRC16(quint8 *data, quint32 length)
     return crc;
 }
 
-bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //WIP
+QByteArray ZNSP::slip_encode(QByteArray &data)
 {
-    QByteArray request;
+    QByteArray encodedData;
+    for (int i = 0; i < data.length(); i++)
+    {
+       switch (data.at(i))
+       {
+            case SLIP_END:
+                encodedData.append(SLIP_ESC);
+                encodedData.append(SLIP_ESC_END);
+                break;
+
+            case SLIP_ESC:
+                encodedData.append(SLIP_ESC);
+                encodedData.append(SLIP_ESC_ESC);
+                break;
+
+            default:
+                encodedData.append(data.at(i));
+                break;
+       }
+    }
+
+    return encodedData;
+}
+
+QByteArray ZNSP::slip_decode(QByteArray &data)
+{
+    QByteArray decodedData;
+    for (int i = 0; i < data.length(); i++)
+    {
+        if ((data.at(i) == SLIP_ESC) && (i < data.length() - 1))
+        {
+            if (data.at(i + 1) == SLIP_ESC_END)
+                decodedData.append(SLIP_END);
+            else if (data.at(i + 1) == SLIP_ESC_ESC)
+                decodedData.append(SLIP_ESC);
+            else
+                return QByteArray();
+            i++;
+        }
+        else
+        {
+            decodedData.append(data.at(i));
+        }
+    }
+
+    return decodedData;
+}
+
+bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //ready
+{
+    QByteArray request, encodedRequest;
     frameHeaderStruct header;
     quint16 crc;
 
     m_command = command;
     m_commandReply = data.isEmpty();
 
-    header.flags = 0x00;
-    header.type = REQUEST;
+    header.flags = REQUEST;
     header.id = command;
     header.sequence = getSeq();
-    header.length = data.length() + 2;
+    header.length = data.length();
 
     crc = getCRC16(reinterpret_cast <quint8*> (data.data()), data.length());
 
@@ -205,14 +254,18 @@ bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //W
     if (m_adapterDebug)
         logInfo << "-->" << request.toHex(':');
 
-    sendData(request);
+    encodedRequest.append(SLIP_END);
+    encodedRequest = slip_encode(request);
+    encodedRequest.append(SLIP_END);
+
+    sendData(encodedRequest);
     if (notify)
         return waitForSignal(this, SIGNAL(notifyReceived()), ZBOSS_REQUEST_TIMEOUT);
     else
         return waitForSignal(this, SIGNAL(dataReceived()), ZBOSS_REQUEST_TIMEOUT);
 }
 
-void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //WIP
+void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) //WIP
 {
     if (m_adapterDebug)
         logInfo << "<--" << QString::asprintf("0x%04x", qFromBigEndian(command)) << data.toHex(':');
@@ -317,7 +370,7 @@ void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //W
             {
                 if ((m_packet_seq == static_cast <quint8> (data.at(0))))
                 {
-                    if (type == RESPONSE)
+                    if (flags == RESPONSE)
                     {
                         if (m_commandReply && (qFromBigEndian(command) != ZNSP_NETWORK_INIT))
                         {
@@ -332,7 +385,7 @@ void ZNSP::parsePacket(quint8 type, quint16 command, const QByteArray &data) //W
                         emit dataReceived();
                         return;
                     }
-                    else if (type == INDICATION)
+                    else if (flags == INDICATION)
                     {
                         m_replyStatus = 0x00;
                         m_replyData = data.mid(3, data.length() - 3);
@@ -466,29 +519,41 @@ void ZNSP::softReset(void) //ready
     return;  
 }
 
-void ZNSP::parseData(QByteArray &buffer) //WIP
+void ZNSP::parseData(QByteArray &buffer) //ready
 {
     while (!buffer.isEmpty())
     {
         QByteArray data;
         quint16 crc;
-        int length = static_cast <int> (static_cast <char> (buffer.at(6)) + static_cast <char> (buffer.at(5)));
+        quint16 length;
+
+        if (!buffer.startsWith(SLIP_END) || buffer.length() < 8)
+            return;
+        
+        length = qFromBigEndian(static_cast <quint16> (buffer.mid(6, 2)));
+        data = buffer.mid(1, length + 10);
+
+        if (!data.endsWith(SLIP_END))
+            return;
+        
+        data.remove(length + 9, 1);
+        data = slip_decode(data);
 
         if (m_portDebug)
-            logInfo << "Packet received:" << buffer.mid(0, length + 7).toHex(':');
+            logInfo << "Packet received:" << data.toHex(':');
 
-        data = buffer.mid(0, length + 7);
+        memcpy(&crc, data.mid(length + 7, 2).constData(), sizeof(crc));
 
-        memcpy(&crc, data.mid(length + 5, 2).constData(), sizeof(crc));
-
-        if (crc != getCRC16(reinterpret_cast <quint8*> (data.mid(7, length).data()), length - 2))
+        if (crc != getCRC16(reinterpret_cast <quint8*> (data.mid(7, length).data()), length))
         {
-            handleError(QString("Packet %1 CRC mismatch").arg(QString(buffer.mid(0, length + 7).toHex(':'))));
+            handleError(QString("Packet %1 CRC mismatch").arg(QString(data.toHex(':'))));
             return;
         }
 
+        data.remove(length + 7, 2);
+
         m_queue.enqueue(data);
-        buffer.remove(0, length + 7);
+        buffer.remove(0, length + 11);
     }
 }
 
@@ -502,17 +567,15 @@ bool ZNSP::permitJoin(bool enabled) //ready
     return true;
 }
 
-void ZNSP::handleQueue(void) //WIP
+void ZNSP::handleQueue(void) //ready
 {
     while (!m_queue.isEmpty())
     {
         QByteArray packet = m_queue.dequeue();
-        quint16 command;
-        int length = static_cast <int> (static_cast <char> (packet.at(6)) + static_cast <char> (packet.at(5)));
+        quint16 flags, command;
+        memcpy(&flags, packet.mid(0, 2).constData(), sizeof(flags));
         memcpy(&command, packet.mid(2, 2).constData(), sizeof(command));
         
-        quint8 type = static_cast <quint8> (packet.at(1));
-        parsePacket(type, qFromBigEndian(command), packet.mid(4, length - 2));
-        sendAck();
+        parsePacket(qFromBigEndian(flags), qFromBigEndian(command), packet.mid(4));
     }
 }

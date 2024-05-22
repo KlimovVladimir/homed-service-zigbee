@@ -9,9 +9,9 @@
 #define SLIP_ESC_ESC                                0xDD
 
 //Control Type
-#define REQUEST                                     0x00
-#define RESPONSE                                    0x10
-#define INDICATION                                  0x20
+#define REQUEST                                     0x0000
+#define RESPONSE                                    0x0010
+#define INDICATION                                  0x0020
 
 //Network command ids
 #define ZNSP_NETWORK_INIT                           0x0000
@@ -219,8 +219,7 @@
 
 struct frameHeaderStruct
 {
-    quint8 flags;
-    quint8 type;
+    quint16 flags;
     quint16 id;
     quint8  sequence;
     quint16 length;
@@ -414,13 +413,14 @@ private:
 
     quint8 m_packet_seq;
 
-    quint8 getCRC8(quint8 *data, quint32 length);
     quint16 getCRC16(quint8 *data, quint32 length);
+    QByteArray slip_encode(QByteArray &data);
+    QByteArray slip_decode(QByteArray &data);
     inline quint8 getSeq() {m_packet_seq = (m_packet_seq + 1) % 255; return m_packet_seq;}
 
     bool sendRequest(quint16 command, const QByteArray &data = QByteArray());
     void sendAck();
-    void parsePacket(quint8 type, quint16 command, const QByteArray &data);
+    void parsePacket(quint16 flags, quint16 command, const QByteArray &data);
 
     bool startCoordinator(void);
 
