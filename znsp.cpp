@@ -53,27 +53,26 @@ ZNSP::ZNSP(QSettings *config, QObject *parent) : Adapter(config, parent) //WIP
 
 bool ZNSP::unicastRequest(quint8, quint16 networkAddress, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //WIP
 {
-    apsdeDataRequestStruct request;
+    apsDataRequestStruct request;
     QByteArray buffer;
     
     buffer.append(reinterpret_cast <const char*> (&networkAddress), sizeof(networkAddress));
     buffer.append(6, 0x00);
     memcpy(&request.ieeeAddress, buffer.constData(), sizeof(request.ieeeAddress));
 
-    request.paramLength = 0x15;
-    request.dataLength = payload.length();
-    request.profileId = qToBigEndian <quint16> (PROFILE_HA);
-    request.clusterId = clusterId;
     request.dstEndpointId = dstEndPointId;
     request.srcEndpointId = srcEndPointId;
-    request.radius = 0x00;
     request.dstMode = ADDRESS_MODE_16_BIT;
-    request.txMode = 0x01;
+    request.profileId = qToBigEndian <quint16> (m_endpoints.contains(srcEndPointId) ? m_endpoints.value(srcEndPointId)->profileId() : 0x0000);
+    request.clusterId = clusterId;
+    request.txMode = 0x00;
     request.alias = 0x00;
     request.srcAlias = 0x0000;
     request.aliasSeq = 0x00;
+    request.radius = 0x00;
+    request.asduLength = payload.length();
 
-    return sendRequest(APSDE_DATA_REQ, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)).append(payload)) && !m_replyStatus;
+    return sendRequest(ZNSP_APS_DATA_REQUEST, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)).append(payload)) && !m_replyStatus;
 }
 
 bool ZNSP::multicastRequest(quint8, quint16 groupId, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //WIP
@@ -85,20 +84,19 @@ bool ZNSP::multicastRequest(quint8, quint16 groupId, quint8 srcEndPointId, quint
     buffer.append(6, 0x00);
     memcpy(&request.ieeeAddress, buffer.constData(), sizeof(request.ieeeAddress));
 
-    request.paramLength = 0x15;
-    request.dataLength = payload.length();
-    request.profileId = qToBigEndian <quint16> (PROFILE_HA);
-    request.clusterId = clusterId;
     request.dstEndpointId = dstEndPointId;
     request.srcEndpointId = srcEndPointId;
-    request.radius = 0x00;
     request.dstMode = ADDRESS_MODE_GROUP;
-    request.txMode = 0x01;
+    request.profileId = qToBigEndian <quint16> (m_endpoints.contains(srcEndPointId) ? m_endpoints.value(srcEndPointId)->profileId() : 0x0000);
+    request.clusterId = clusterId;
+    request.txMode = 0x00;
     request.alias = 0x00;
     request.srcAlias = 0x0000;
     request.aliasSeq = 0x00;
+    request.radius = 0x00;
+    request.asduLength = payload.length();
 
-    return sendRequest(APSDE_DATA_REQ, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)).append(payload)) && !m_replyStatus;
+    return sendRequest(ZNSP_APS_DATA_REQUEST, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)).append(payload)) && !m_replyStatus;
 }
 
 bool ZNSP::unicastInterPanRequest(quint8, const QByteArray &, quint16 , const QByteArray &)
@@ -255,14 +253,14 @@ bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //r
         logInfo << "-->" << request.toHex(':');
 
     encodedRequest.append(SLIP_END);
-    encodedRequest = slip_encode(request);
+    encodedRequest.append(slip_encode(request));
     encodedRequest.append(SLIP_END);
 
     sendData(encodedRequest);
     if (notify)
-        return waitForSignal(this, SIGNAL(notifyReceived()), ZBOSS_REQUEST_TIMEOUT);
+        return waitForSignal(this, SIGNAL(notifyReceived()), ZNPS_REQUEST_TIMEOUT);
     else
-        return waitForSignal(this, SIGNAL(dataReceived()), ZBOSS_REQUEST_TIMEOUT);
+        return waitForSignal(this, SIGNAL(dataReceived()), ZNPS_REQUEST_TIMEOUT);
 }
 
 void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) //WIP
@@ -370,7 +368,7 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
             {
                 if ((m_packet_seq == static_cast <quint8> (data.at(0))))
                 {
-                    if (flags == RESPONSE)
+                    if (qFromBigEndian(flags) & RESPONSE)
                     {
                         if (m_commandReply && (qFromBigEndian(command) != ZNSP_NETWORK_INIT))
                         {
@@ -385,7 +383,7 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
                         emit dataReceived();
                         return;
                     }
-                    else if (flags == INDICATION)
+                    else if (qFromBigEndian(flags) & INDICATION)
                     {
                         m_replyStatus = 0x00;
                         m_replyData = data.mid(3, data.length() - 3);
@@ -530,7 +528,8 @@ void ZNSP::parseData(QByteArray &buffer) //ready
         if (!buffer.startsWith(SLIP_END) || buffer.length() < 8)
             return;
         
-        length = qFromBigEndian(static_cast <quint16> (buffer.mid(6, 2)));
+        memcpy(&length, buffer.mid(6, 2).constData(), sizeof(length));
+        length = qFromBigEndian(length);
         data = buffer.mid(1, length + 10);
 
         if (!data.endsWith(SLIP_END))
