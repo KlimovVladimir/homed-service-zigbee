@@ -116,6 +116,24 @@ struct apsDataRequestStruct
     quint32 asduLength;
 };
 
+struct apsDataIndicatonStruct
+{
+    quint8 states;
+    quint8 dstAddressMode;
+    quint64 dstIEEEAddress;
+    quint8 dstEndpointId;
+    quint8 srcAddressMode;
+    quint64 srcIEEEAddress;
+    quint8 srcEndpointId;
+    quint16 profileId;
+    quint16 clusterId;
+    quint8 indicationStatus;
+    quint8 securityStatus;
+    quint8 lqi;
+    quint32 rxTime;
+    quint8 dataLength;
+};
+
 struct zdoBindSetStruct
 {
     quint64 srcAddress;

@@ -280,13 +280,13 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
 
     switch (qFromBigEndian(command))
     {
-        // case APSDE_DATA_IND:
-        // {
-        //     const apsdeDataIndicatonStruct *message = reinterpret_cast <const apsdeDataIndicatonStruct*> (data.mid(0, sizeof(apsdeDataIndicatonStruct)).constData());
-        //     QByteArray payload = data.mid(sizeof(apsdeDataIndicatonStruct), message->dataLength);
-        //     emit zclMessageReveived(message->srcNetworkAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
-        //     break;
-        // }
+        case APSDE_DATA_IND:
+        {
+            const apsDataIndicatonStruct *message = reinterpret_cast <const apsDataIndicatonStruct*> (data.mid(0, sizeof(apsDataIndicatonStruct)).constData());
+            QByteArray payload = data.mid(sizeof(apsDataIndicatonStruct), message->dataLength);
+            //emit zclMessageReveived(message->srcNetworkAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
+            break;
+        }
 
         // case ZBOSS_ZDO_NODE_DESC_REQ:
         // {
@@ -527,6 +527,7 @@ bool ZNSP::startCoordinator(void) //WIP
 void ZNSP::softReset(void) //ready
 {
     m_packet_seq = -1;
+    sendRequest(ZNSP_SYSTEM_RESET);
     //sendRequest(ZNSP_NETWORK_LEAVE);
    
     nwkFormationStruct network;
