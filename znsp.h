@@ -82,6 +82,12 @@
 #define ZNSP_APS_DATA_INDICATION                    0x0301
 #define ZNSP_APS_DATA_CONFIRM                       0x0302
 
+#define ZNSP_SYSTEM_RESET                           0x0400
+#define ZNSP_SYSTEM_FACTORY                         0x0401
+#define ZNSP_SYSTEM_FIRMWARE                        0x0402
+#define ZNSP_SYSTEM_MODEL                           0x0403
+#define ZNSP_SYSTEM_MANUFACTURER                    0x0404
+
 #include "adapter.h"
 
 #pragma pack(push, 1)
@@ -110,157 +116,25 @@ struct apsDataRequestStruct
     quint32 asduLength;
 };
 
-
-
-
-struct commonHeaderStruct
+struct zdoBindSetStruct
 {
-    quint8 version;
-    quint8 type;
-    quint16 id;
-};
-
-struct moduleVersionResponseStruct
-{
-    quint8 fwVersionMajor;
-    quint8 fwVersionMinor;
-    quint8 fwVersionRevision;
-    quint8 fwVersionCommit;
-
-    quint8 stackVersionMajor;
-    quint8 stackVersionMinor;
-    quint8 stackVersionRevision;
-    quint8 stackVersionCommit;
-
-    quint8 protocolVersionMajor;
-    quint8 protocolVersionMinor;
-    quint8 protocolVersionRevision;
-    quint8 protocolVersionCommit;
-};
-
-struct localIEEEResponseStruct
-{
-    quint8 macIfaceNum;
-    quint64 ieeeAddress;
-};
-
-struct channelMaskRequestStruct
-{
-    quint8 page;
-    quint32 mask;
-};
-
-struct nwkSetRequestStruct
-{
-    quint8 key[16];
-    quint8 number;
-};
-
-struct setTCPolicyStruct
-{
-    quint16 id;
-    quint8 value;
-};
-
-struct nwkForamtionStruct
-{
-    quint8 channelListLen;
-    channelMaskRequestStruct channelList;
-    quint8 scanDuration;
-    quint8 flag;
-    quint16 address;
-    quint64 ieeeAddress;
-};
-
-struct nwkLeaveStruct
-{
-    quint64 ieeeAddress;
-    quint8  rejoin;
-};
-
-struct apsdeDataIndicatonStruct
-{
-    quint8 paramLength;
-    quint16 dataLength;
-    quint8 frameFC;
-    quint16 srcNetworkAddress;
-    quint16 dstNetworkAddress;
-    quint16 grpNetworkAddress;
-    quint8 dstEndpointId;
-    quint8 srcEndpointId;
-    quint16 clusterId;
-    quint16 profileId;
-    quint8 counter;
-    quint16 srcMAC;
-    quint16 dstMAC;
-    quint8 lqi;
-    quint8 rssi;
-    quint8 keyAttr;
-};
-
-struct apsdeDataRequestStruct
-{
-    quint8 paramLength;
-    quint16 dataLength;
-    quint64 ieeeAddress;
-    quint16 profileId;
-    quint16 clusterId;
-    quint8 dstEndpointId;
-    quint8 srcEndpointId;
-    quint8 radius;
-    quint8 dstMode;
-    quint8 txMode;
-    quint8 alias;
-    quint16 srcAlias;
-    quint8 aliasSeq;
-};
-
-struct deviceAnnounceIndicatonStruct
-{
-    quint16 networkAddress;
-    quint64 ieeeAddress;
-    quint8  capabilities;
-};
-
-struct zdoBindRequestStruct
-{
-    quint16 networkAddress;
     quint64 srcAddress;
     quint8 srcEndpointId;
     quint16 clusterId;
     quint8 dstMode;
     quint64 dstAddress;
     quint8 dstEndpointId;
-};
-
-struct zdoLeaveRequestStruct
-{
     quint16 networkAddress;
-    quint64 dstAddress;
-    quint8 flags;
+    quint32 userCb;
+    quint32 userCtx;
 };
 
-struct zdoNodeDescriptorResponseStruct
+struct nwkFormationStruct
 {
-    quint16 flags;
-    quint8 macCpb;
-    quint16 manufacturerCode;
-    quint8 maxBufferSize;
-    quint16 maxTransferSize;
-    quint16 serverMask;
-    quint16 maxOutTransferSize;
-    quint8 descriptorCapabilities;
-    quint16 networkAddress;
-};
-
-struct zdoSimpleDescriptorResponseStruct
-{
-    quint8 endpointId;
-    quint16 profileId;
-    quint16 deviceId;
-    quint8 version;
-    quint8 inpClusterCount;
-    quint8 outClusterCount;
+    quint8 role;
+    quint8 maxChildren;
+    quint8 policy;
+    quint32 keepAlive;
 };
 
 #pragma pack(pop)
@@ -294,7 +168,7 @@ private:
     bool m_commandReply;
 
     QByteArray m_networkKey;
-    QList <setTCPolicyStruct> m_policy;
+    //QList <setTCPolicyStruct> m_policy;
 
     quint8 m_packet_seq;
 
@@ -303,7 +177,7 @@ private:
     QByteArray slip_decode(QByteArray &data);
     inline quint8 getSeq() {m_packet_seq = (m_packet_seq + 1) % 255; return m_packet_seq;}
 
-    bool sendRequest(quint16 command, const QByteArray &data = QByteArray());
+    bool sendRequest(quint16 command, const QByteArray &data = QByteArray(), bool notify = false);
     void sendAck();
     void parsePacket(quint16 flags, quint16 command, const QByteArray &data);
 

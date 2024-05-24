@@ -39,19 +39,19 @@ static uint16_t const crc16Table[256] = {
 
 ZNSP::ZNSP(QSettings *config, QObject *parent) : Adapter(config, parent) //WIP
 {
-    m_packet_seq = 0;
+    m_packet_seq = -1;
 
     m_networkKey = QByteArray::fromHex(config->value("security/key", "000102030405060708090a0b0c0d0e0f").toString().remove("0x").toUtf8());
     
-    m_policy.append({POLICY_TC_LINK_KEYS_REQUIRED,           static_cast <char> (0x00)});
-    m_policy.append({POLICY_IC_REQUIRED,                     static_cast <char> (0x00)});
-    m_policy.append({POLICY_TC_REJOIN_ENABLED,               0x01});
-    m_policy.append({POLICY_IGNORE_TC_REJOIN,                static_cast <char> (0x00)});
-    m_policy.append({POLICY_APS_INSECURE_JOIN,               static_cast <char> (0x00)});
-    m_policy.append({POLICY_DISABLE_NWK_MGMT_CHANNEL_UPDATE, static_cast <char> (0x00)});
+    // m_policy.append({POLICY_TC_LINK_KEYS_REQUIRED,           static_cast <char> (0x00)});
+    // m_policy.append({POLICY_IC_REQUIRED,                     static_cast <char> (0x00)});
+    // m_policy.append({POLICY_TC_REJOIN_ENABLED,               0x01});
+    // m_policy.append({POLICY_IGNORE_TC_REJOIN,                static_cast <char> (0x00)});
+    // m_policy.append({POLICY_APS_INSECURE_JOIN,               static_cast <char> (0x00)});
+    // m_policy.append({POLICY_DISABLE_NWK_MGMT_CHANNEL_UPDATE, static_cast <char> (0x00)});
 }
 
-bool ZNSP::unicastRequest(quint8, quint16 networkAddress, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //WIP
+bool ZNSP::unicastRequest(quint8, quint16 networkAddress, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //ready
 {
     apsDataRequestStruct request;
     QByteArray buffer;
@@ -75,9 +75,9 @@ bool ZNSP::unicastRequest(quint8, quint16 networkAddress, quint8 srcEndPointId, 
     return sendRequest(ZNSP_APS_DATA_REQUEST, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)).append(payload)) && !m_replyStatus;
 }
 
-bool ZNSP::multicastRequest(quint8, quint16 groupId, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //WIP
+bool ZNSP::multicastRequest(quint8, quint16 groupId, quint8 srcEndPointId, quint8 dstEndPointId, quint16 clusterId, const QByteArray &payload) //ready
 {
-    apsdeDataRequestStruct request;
+    apsDataRequestStruct request;
     QByteArray buffer;
     
     buffer.append(reinterpret_cast <const char*> (&groupId), sizeof(groupId));
@@ -121,23 +121,25 @@ void ZNSP::resetInterPanChannel(void)
 
 bool ZNSP::zdoRequest(quint8, quint16 networkAddress, quint16 clusterId, const QByteArray &data) //WIP
 {
-    quint16 command;
+    // quint16 command;
 
-    switch (clusterId)
-    {
-        case ZDO_NODE_DESCRIPTOR_REQUEST:   command = ZBOSS_ZDO_NODE_DESC_REQ; break;
-        case ZDO_SIMPLE_DESCRIPTOR_REQUEST: command = ZBOSS_ZDO_SIMPLE_DESC_REQ; break;
-        case ZDO_ACTIVE_ENDPOINTS_REQUEST:  command = ZBOSS_ZDO_ACTIVE_EP_REQ; break;
-        default: return false;
-    }
+    // switch (clusterId)
+    // {
+    //     case ZDO_NODE_DESCRIPTOR_REQUEST:   command = ZBOSS_ZDO_NODE_DESC_REQ; break;
+    //     case ZDO_SIMPLE_DESCRIPTOR_REQUEST: command = ZBOSS_ZDO_SIMPLE_DESC_REQ; break;
+    //     case ZDO_ACTIVE_ENDPOINTS_REQUEST:  command = ZBOSS_ZDO_ACTIVE_EP_REQ; break;
+    //     default: return false;
+    // }
 
-    return sendRequest(command, QByteArray(reinterpret_cast <char*> (&networkAddress), sizeof(networkAddress)).append(data)) && !m_replyStatus;
+    // return sendRequest(command, QByteArray(reinterpret_cast <char*> (&networkAddress), sizeof(networkAddress)).append(data)) && !m_replyStatus;
+
+    return false;
 }
 
 bool ZNSP::bindRequest(quint8, quint16 networkAddress, quint8 endpointId, quint16 clusterId, const QByteArray &address, quint8 dstEndpointId, bool unbind) //WIP
 {
     QByteArray buffer = address.isEmpty() ? m_ieeeAddress : address;
-    zdoBindRequestStruct request;
+    zdoBindSetStruct request;
 
     memcpy(&request.srcAddress, m_requestAddress.constData(), sizeof(request.srcAddress));
     memcpy(&request.dstAddress, buffer.constData(), sizeof(request.dstAddress));
@@ -152,22 +154,29 @@ bool ZNSP::bindRequest(quint8, quint16 networkAddress, quint8 endpointId, quint1
     else
         request.dstEndpointId = 0x00;
 
-    return sendRequest(unbind ? ZBOSS_ZDO_UNBIND_REQ : ZBOSS_ZDO_BIND_REQ, QByteArray(reinterpret_cast <char*> (&request), sizeof(request))) && !m_replyStatus;
+    //TODO: mystical values
+    request.userCb = 0x00;
+    request.userCtx = 0x00;
+
+    return sendRequest(unbind ? ZNSP_ZDO_UNBIND_SET : ZNSP_ZDO_BIND_SET, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)), true) && !m_replyStatus;
 }
 
 bool ZNSP::leaveRequest(quint8, quint16 networkAddress) //WIP
 {
-    zdoLeaveRequestStruct request;
+    // zdoLeaveRequestStruct request;
 
-    request.dstAddress = 0x00;
-    request.networkAddress = networkAddress;
-    request.flags = 0x00;
-    return sendRequest(ZBOSS_ZDO_MGMT_LEAVE_REQ, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)));
+    // request.dstAddress = 0x00;
+    // request.networkAddress = networkAddress;
+    // request.flags = 0x00;
+    // return sendRequest(ZBOSS_ZDO_MGMT_LEAVE_REQ, QByteArray(reinterpret_cast <char*> (&request), sizeof(request)));
+
+    return false;
 }
 
 bool ZNSP::lqiRequest(quint8, quint16 networkAddress, quint8 index) //WIP
 {
-    return sendRequest(ZBOSS_ZDO_MGMT_LQI_REQ, QByteArray(reinterpret_cast <char*> (&networkAddress), sizeof(networkAddress)).append(static_cast <quint8> (index))) && !m_replyStatus;
+    //return sendRequest(ZBOSS_ZDO_MGMT_LQI_REQ, QByteArray(reinterpret_cast <char*> (&networkAddress), sizeof(networkAddress)).append(static_cast <quint8> (index))) && !m_replyStatus;
+    return false;
 }
 
 quint16 ZNSP::getCRC16(quint8 *data, quint32 length)
@@ -243,7 +252,8 @@ bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //r
     header.sequence = getSeq();
     header.length = data.length();
 
-    crc = getCRC16(reinterpret_cast <quint8*> (data.data()), data.length());
+    request.append(data);
+    crc = getCRC16(reinterpret_cast <quint8*> (request.data()), request.length());
 
     request = QByteArray(reinterpret_cast <char*> (&header), sizeof(header));
     request.append(data);
@@ -370,6 +380,17 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
                 {
                     if (qFromBigEndian(flags) & RESPONSE)
                     {
+                        if (qFromBigEndian(command) == ZNSP_NETWORK_LEAVE)
+                        {
+                            if (!startCoordinator())
+                            {
+                                logWarning << "Coordinator startup failed";
+                                return;
+                            }
+
+                            m_resetTimer->stop();
+                        }
+
                         if (m_commandReply && (qFromBigEndian(command) != ZNSP_NETWORK_INIT))
                         {
                             m_replyStatus = 0x00;
@@ -401,77 +422,80 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
 
 bool ZNSP::startCoordinator(void) //WIP
 {
-    moduleVersionResponseStruct version;
-    localIEEEResponseStruct localIeee;
-    channelMaskRequestStruct channel;
-    nwkSetRequestStruct nwk;
-    nwkForamtionStruct network;
-    quint64 extendedPanId;
+    nwkFormationStruct network;
     bool withoutFormation = false;
 
-    if (!sendRequest(ZBOSS_GET_MODULE_VERSION) || m_replyStatus)
+    quint64 ieeeAddress, extendedPanId;
+    quint32 channelMask;
+    quint8 networkKey[16];
+
+    if (!sendRequest(ZNSP_NETWORK_INIT) || m_replyStatus)
     {
-        logWarning << "Adapter version request failed";
+        logWarning << "Network init failed";
         return false;
     }
 
-    memcpy(&version, m_replyData.constData(), sizeof(version));
-    m_manufacturerName = "Nordic Semiconductor";
+    if (!sendRequest(ZNSP_SYSTEM_MANUFACTURER) || m_replyStatus)
+    {
+        logWarning << "ZNSP_SYSTEM_MANUFACTURER";
+        return false;
+    }
+
+    m_manufacturerName = "Espressif";
     m_modelName = QString::asprintf("ZNSP");
-    m_firmware = QString::asprintf("%d.%d.%d", version.fwVersionMinor, version.fwVersionRevision, version.fwVersionCommit);
+    m_firmware = QString::asprintf("0.0.0");
 
     logInfo << QString("Adapter type: %1 (%2)").arg(m_modelName, m_firmware).toUtf8().constData();
 
-    if (!sendRequest(ZBOSS_SET_ZIGBEE_ROLE, QByteArray(1, static_cast <char> (LogicalType::Coordinator))) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_ROLE_SET, QByteArray(1, static_cast <char> (LogicalType::Coordinator))) || m_replyStatus)
     {
         logWarning << "Set adapter logical type request failed";
         return false;
     }
 
-    if (!sendRequest(ZBOSS_GET_LOCAL_IEEE_ADDR) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_LONG_ADDRESS_GET) || m_replyStatus)
     {
         logWarning << "Local IEEE address request failed";
         return false;
     }
 
-    memcpy(&localIeee, m_replyData.constData(), sizeof(localIeee));
-    m_ieeeAddress = QByteArray(reinterpret_cast <char*> (&localIeee.ieeeAddress), sizeof(localIeee.ieeeAddress));
+    memcpy(&ieeeAddress, m_replyData.constData() + 1, sizeof(ieeeAddress));
+    ieeeAddress = qToBigEndian(qFromLittleEndian(ieeeAddress));
+    m_ieeeAddress = QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress));
 
-    if (!sendRequest(ZBOSS_SET_PAN_ID, QByteArray(reinterpret_cast <char*> (&m_panId), sizeof(m_panId))) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_PAN_ID_SET, QByteArray(reinterpret_cast <char*> (&m_panId), sizeof(m_panId))) || m_replyStatus)
     {
         logWarning << "Set panid request failed";
         return false;
     }
 
-    channel.page = 0;
-    channel.mask = (1 << m_channel);
+    channelMask = (1 << m_channel);
 
-    if (!sendRequest(ZBOSS_SET_ZIGBEE_CHANNEL_MASK, QByteArray(reinterpret_cast <char*> (&channel), sizeof(channel))) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_PRIMARY_CHANNEL_SET, QByteArray(reinterpret_cast <char*> (&channelMask), sizeof(channelMask))) || m_replyStatus)
     {
         logWarning << "Set channel mask request failed";
         return false;
     }
 
-    memcpy(nwk.key, m_networkKey.constData(), sizeof(nwk.key));
-    nwk.number = 0;
+    memcpy(networkKey, m_networkKey.constData(), sizeof(networkKey));
 
-    if (!sendRequest(ZBOSS_SET_NWK_KEY, QByteArray(reinterpret_cast <char*> (&nwk), sizeof(nwk))) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_PRIMARY_KEY_SET, QByteArray(reinterpret_cast <char*> (&networkKey), sizeof(networkKey))) || m_replyStatus)
     {
         logWarning << "Set nwk request failed";
         return false;
     }
 
-    for (int i = 0; i < m_policy.length(); i++)
-    {
-        setTCPolicyStruct request = m_policy.at(i);
+    // for (int i = 0; i < m_policy.length(); i++)
+    // {
+    //     setTCPolicyStruct request = m_policy.at(i);
 
-        if (sendRequest(ZBOSS_SET_TC_POLICY, QByteArray(reinterpret_cast <char*> (&request), sizeof(request))) && !m_replyStatus)
-            continue;
+    //     if (sendRequest(ZBOSS_SET_TC_POLICY, QByteArray(reinterpret_cast <char*> (&request), sizeof(request))) && !m_replyStatus)
+    //         continue;
 
-        logWarning << "Set policy" << QString::asprintf("0x%04x", request.id) << "request failed";
-    }
+    //     logWarning << "Set policy" << QString::asprintf("0x%04x", request.id) << "request failed";
+    // }
 
-    if (!sendRequest(ZBOSS_GET_EXTENDED_PAN_ID) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_EXTENDED_PAN_ID_GET) || m_replyStatus)
     {
         logWarning << "Local IEEE address request failed";
         return false;
@@ -479,25 +503,21 @@ bool ZNSP::startCoordinator(void) //WIP
 
     memcpy(&extendedPanId, m_replyData.constData(), sizeof(extendedPanId));
 
-    network.channelListLen = 0x01;
-    network.channelList = channel;
-    network.scanDuration = 0x05;
-    network.flag = 0x00;
-    network.address = 0x0000;
-    network.ieeeAddress = qToBigEndian <quint64> (extendedPanId);
+    network.role = 0x00;
+    network.maxChildren = 0x20;
+    network.policy = 0x00;
+    network.keepAlive = 0x00;
 
-    if (!sendRequest(NWK_FORMATION, QByteArray(reinterpret_cast<char *>(&network), sizeof(network))) || m_replyStatus)
+    if (!sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network))) || m_replyStatus)
     {
-        withoutFormation = true;
+        logWarning << "Network form failed";
+        return false;
     }
 
-    if (withoutFormation)
+    if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x00))) || m_replyStatus)
     {
-        if (!sendRequest(NWK_START_WITHOUT_FORMATION) || m_replyStatus)
-        {
-            logWarning << "Form network failed";
-            return false;
-        }
+        logWarning << "Network start failed";
+        return false;
     }
 
     emit coordinatorReady();
@@ -506,14 +526,16 @@ bool ZNSP::startCoordinator(void) //WIP
 
 void ZNSP::softReset(void) //ready
 {
-    m_packet_seq = 0;
-    if (!startCoordinator())
-    {
-        logWarning << "Coordinator startup failed";
-        return;
-    }
+    m_packet_seq = -1;
+    //sendRequest(ZNSP_NETWORK_LEAVE);
+   
+    nwkFormationStruct network;
+    network.role = 0x00;
+    network.maxChildren = 0x00;
+    network.policy = 0x00;
+    network.keepAlive = 0x00;
+    sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));
 
-    m_resetTimer->stop();
     return;  
 }
 
@@ -545,7 +567,7 @@ void ZNSP::parseData(QByteArray &buffer) //ready
 
         if (crc != getCRC16(reinterpret_cast <quint8*> (data.mid(7, length).data()), length))
         {
-            handleError(QString("Packet %1 CRC mismatch").arg(QString(data.toHex(':'))));
+            logWarning << QString("Packet %1 CRC mismatch").arg(QString(data.toHex(':')));
             return;
         }
 

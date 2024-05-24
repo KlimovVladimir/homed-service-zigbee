@@ -61,7 +61,7 @@ SOURCES += \
     zigate.cpp \
     zigbee.cpp \
     zstack.cpp \
-    znsp.h
+    znsp.cpp
 
 DISTFILES += \
     deploy/data/usr/share/homed-zigbee/efekta.json \
