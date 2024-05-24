@@ -280,11 +280,12 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
 
     switch (qFromBigEndian(command))
     {
-        case APSDE_DATA_IND:
+        case ZNSP_APS_DATA_INDICATION:
         {
             const apsDataIndicatonStruct *message = reinterpret_cast <const apsDataIndicatonStruct*> (data.mid(0, sizeof(apsDataIndicatonStruct)).constData());
             QByteArray payload = data.mid(sizeof(apsDataIndicatonStruct), message->dataLength);
-            //emit zclMessageReveived(message->srcNetworkAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
+            QByteArray ieeeAddress = QByteArray(reinterpret_cast <char*> (&message->srcIEEEAddress), sizeof(message->srcIEEEAddress));
+            emit espZclMessageReveived(ieeeAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
             break;
         }
 

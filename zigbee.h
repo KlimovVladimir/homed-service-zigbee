@@ -201,6 +201,7 @@ private slots:
 
     void deviceJoined(const QByteArray &ieeeAddress, quint16 networkAddress);
     void deviceLeft(const QByteArray &ieeeAddress);
+    void espZclMessageReveived(QByteArray &ieeeAddress, quint8 endpointId, quint16 clusterId, quint8 linkQuality, const QByteArray &payload);
     void zdoMessageReveived(quint16 networkAddress, quint16 clusterId, const QByteArray &payload);
     void zclMessageReveived(quint16 networkAddress, quint8 endpointId, quint16 clusterId, quint8 linkQuality, const QByteArray &payload);
     void rawMessageReveived(const QByteArray &ieeeAddress, quint16 clusterId, quint8 linkQuality, const QByteArray &data);

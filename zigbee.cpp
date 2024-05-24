@@ -1412,6 +1412,7 @@ void ZigBee::coordinatorReady(void)
 
     connect(m_adapter, &Adapter::deviceJoined, this, &ZigBee::deviceJoined, Qt::UniqueConnection);
     connect(m_adapter, &Adapter::deviceLeft, this, &ZigBee::deviceLeft, Qt::UniqueConnection);
+    connect(m_adapter, &Adapter::espZclMessageReveived, this, &ZigBee::espZclMessageReveived, Qt::UniqueConnection);
     connect(m_adapter, &Adapter::zdoMessageReveived, this, &ZigBee::zdoMessageReveived, Qt::UniqueConnection);
     connect(m_adapter, &Adapter::zclMessageReveived, this, &ZigBee::zclMessageReveived, Qt::UniqueConnection);
     connect(m_adapter, &Adapter::rawMessageReveived, this, &ZigBee::rawMessageReveived, Qt::UniqueConnection);
@@ -1514,6 +1515,12 @@ void ZigBee::deviceLeft(const QByteArray &ieeeAddress)
 
     m_devices->removeDevice(it.value());
     m_devices->storeDatabase();
+}
+
+void ZigBee::espZclMessageReveived(QByteArray &ieeeAddress, quint8 endpointId, quint16 clusterId, quint8 linkQuality, const QByteArray &payload)
+{
+    auto it = m_devices->find(ieeeAddress);
+    zclMessageReveived(it.value()->networkAddress(), endpointId, clusterId, linkQuality, payload);
 }
 
 void ZigBee::zdoMessageReveived(quint16 networkAddress, quint16 clusterId, const QByteArray &payload)
