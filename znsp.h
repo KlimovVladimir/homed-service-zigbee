@@ -1,7 +1,7 @@
 #ifndef ZNSP_H
 #define ZNSP_H
 
-#define ZNPS_REQUEST_TIMEOUT                        10000
+#define ZNPS_REQUEST_TIMEOUT                        2000
 
 #define SLIP_END                                    0xC0
 #define SLIP_ESC                                    0xDB

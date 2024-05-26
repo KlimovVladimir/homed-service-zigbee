@@ -196,7 +196,7 @@ QByteArray ZNSP::slip_encode(QByteArray &data)
     QByteArray encodedData;
     for (int i = 0; i < data.length(); i++)
     {
-       switch (data.at(i))
+       switch (static_cast <quint8> (data.at(i)))
        {
             case SLIP_END:
                 encodedData.append(SLIP_ESC);
@@ -222,11 +222,11 @@ QByteArray ZNSP::slip_decode(QByteArray &data)
     QByteArray decodedData;
     for (int i = 0; i < data.length(); i++)
     {
-        if ((data.at(i) == SLIP_ESC) && (i < data.length() - 1))
+        if ((static_cast <quint8> (data.at(i)) == SLIP_ESC) && (i < data.length() - 1))
         {
-            if (data.at(i + 1) == SLIP_ESC_END)
+            if (static_cast <quint8> (data.at(i + 1)) == SLIP_ESC_END)
                 decodedData.append(SLIP_END);
-            else if (data.at(i + 1) == SLIP_ESC_ESC)
+            else if (static_cast <quint8> (data.at(i + 1)) == SLIP_ESC_ESC)
                 decodedData.append(SLIP_ESC);
             else
                 return QByteArray();
@@ -383,17 +383,6 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
                 {
                     if (qFromBigEndian(flags) & RESPONSE)
                     {
-                        if (qFromBigEndian(command) == ZNSP_NETWORK_LEAVE)
-                        {
-                            if (!startCoordinator())
-                            {
-                                logWarning << "Coordinator startup failed";
-                                return;
-                            }
-
-                            m_resetTimer->stop();
-                        }
-
                         if (m_commandReply && (qFromBigEndian(command) != ZNSP_NETWORK_INIT))
                         {
                             m_replyStatus = 0x00;
@@ -438,9 +427,14 @@ bool ZNSP::startCoordinator(void) //WIP
         return false;
     }
 
-    if (!sendRequest(ZNSP_SYSTEM_MANUFACTURER) || m_replyStatus)
+    network.role = 0x00;
+    network.maxChildren = 0x20;
+    network.policy = 0x00;
+    network.keepAlive = 0x00;
+
+    if (!sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network))) || m_replyStatus)
     {
-        logWarning << "ZNSP_SYSTEM_MANUFACTURER";
+        logWarning << "Network form failed";
         return false;
     }
 
@@ -506,17 +500,6 @@ bool ZNSP::startCoordinator(void) //WIP
 
     memcpy(&extendedPanId, m_replyData.constData(), sizeof(extendedPanId));
 
-    network.role = 0x00;
-    network.maxChildren = 0x20;
-    network.policy = 0x00;
-    network.keepAlive = 0x00;
-
-    if (!sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network))) || m_replyStatus)
-    {
-        logWarning << "Network form failed";
-        return false;
-    }
-
     if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x00))) || m_replyStatus)
     {
         logWarning << "Network start failed";
@@ -530,32 +513,17 @@ bool ZNSP::startCoordinator(void) //WIP
 void ZNSP::softReset(void) //ready
 {
     m_packet_seq = -1;
-
-    //sendRequest(ZNSP_NETWORK_SCAN_COMPLETE_HANDLER);
-
-    // QByteArray data;
-    // data.append(1, 0x00);
-    // data.append(1, 0x00);
-    // data.append(0x14);
-    // data.append(1, 0x00);
-    // data.append(1, 0x00);
-    // data.append(1, 0x00);
-    // data.append(1, 0x00);
-    // sendRequest(ZNSP_NETWORK_SCAN_COMPLETE_HANDLER, data);
-    
-    // sendData(data);
-
-
-    //sendRequest(ZNSP_NETWORK_PERMIT_JOINING, QByteArray(1, 0xFF));
-    //sendRequest(ZNSP_NETWORK_LEAVE);
    
-    /*nwkFormationStruct network;
+    nwkFormationStruct network;
     network.role = 0x00;
     network.maxChildren = 0x00;
     network.policy = 0x00;
     network.keepAlive = 0x00;
-    sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));*/
-    //startCoordinator();
+    if (sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network))) || !m_replyStatus)
+    {
+        sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));
+    }
+    startCoordinator();
 
     return;  
 }
@@ -568,6 +536,8 @@ void ZNSP::parseData(QByteArray &buffer) //ready
         quint16 crc;
         quint16 length;
 
+        buffer = slip_decode(buffer);
+
         if (!buffer.startsWith(SLIP_END) || buffer.length() < 8)
             return;
         
@@ -578,7 +548,6 @@ void ZNSP::parseData(QByteArray &buffer) //ready
         if (!data.endsWith(SLIP_END))
             return;
         
-        data = slip_decode(data);
         data.remove(length + 9, 1);
 
         if (m_portDebug)
@@ -603,7 +572,7 @@ bool ZNSP::permitJoin(bool enabled) //ready
 {
     if (!sendRequest(ZNSP_NETWORK_PERMIT_JOINING, QByteArray(1, enabled ? 0xFF : 0x00)) || m_replyStatus)
     {
-        logWarning << "Form network failed";
+        logWarning << "Set permit join request failed";
         return false;
     }
     return true;
