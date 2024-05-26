@@ -185,8 +185,11 @@ quint16 ZNSP::getCRC16(quint8 *data, quint32 length)
 
     while (length--)
         crc = static_cast <quint16> (crc >> 8) ^ crc16Table[(crc ^ *data++) & 0x00FF];
-    return crc;
+    
+    return ~crc;
 }
+
+
 
 QByteArray ZNSP::slip_encode(QByteArray &data)
 {
@@ -252,11 +255,10 @@ bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //r
     header.sequence = getSeq();
     header.length = data.length();
 
+    request = QByteArray(reinterpret_cast <char*> (&header), sizeof(header));
     request.append(data);
     crc = getCRC16(reinterpret_cast <quint8*> (request.data()), request.length());
 
-    request = QByteArray(reinterpret_cast <char*> (&header), sizeof(header));
-    request.append(data);
     request.append(reinterpret_cast <char*> (&crc), sizeof(crc));
 
     if (m_adapterDebug)
@@ -284,7 +286,7 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
         {
             const apsDataIndicatonStruct *message = reinterpret_cast <const apsDataIndicatonStruct*> (data.mid(0, sizeof(apsDataIndicatonStruct)).constData());
             QByteArray payload = data.mid(sizeof(apsDataIndicatonStruct), message->dataLength);
-            QByteArray ieeeAddress = QByteArray(reinterpret_cast <char*> (&message->srcIEEEAddress), sizeof(message->srcIEEEAddress));
+            QByteArray ieeeAddress = QByteArray(reinterpret_cast <const char*> (&message->srcIEEEAddress), sizeof(message->srcIEEEAddress));
             emit espZclMessageReveived(ieeeAddress, message->srcEndpointId, message->clusterId, message->lqi, payload);
             break;
         }
@@ -528,15 +530,32 @@ bool ZNSP::startCoordinator(void) //WIP
 void ZNSP::softReset(void) //ready
 {
     m_packet_seq = -1;
-    sendRequest(ZNSP_SYSTEM_RESET);
+
+    //sendRequest(ZNSP_NETWORK_SCAN_COMPLETE_HANDLER);
+
+    // QByteArray data;
+    // data.append(1, 0x00);
+    // data.append(1, 0x00);
+    // data.append(0x14);
+    // data.append(1, 0x00);
+    // data.append(1, 0x00);
+    // data.append(1, 0x00);
+    // data.append(1, 0x00);
+    // sendRequest(ZNSP_NETWORK_SCAN_COMPLETE_HANDLER, data);
+    
+    // sendData(data);
+
+
+    //sendRequest(ZNSP_NETWORK_PERMIT_JOINING, QByteArray(1, 0xFF));
     //sendRequest(ZNSP_NETWORK_LEAVE);
    
-    nwkFormationStruct network;
+    /*nwkFormationStruct network;
     network.role = 0x00;
     network.maxChildren = 0x00;
     network.policy = 0x00;
     network.keepAlive = 0x00;
-    sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));
+    sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));*/
+    //startCoordinator();
 
     return;  
 }
@@ -553,21 +572,21 @@ void ZNSP::parseData(QByteArray &buffer) //ready
             return;
         
         memcpy(&length, buffer.mid(6, 2).constData(), sizeof(length));
-        length = qFromBigEndian(length);
+        length = qFromLittleEndian(length);
         data = buffer.mid(1, length + 10);
 
         if (!data.endsWith(SLIP_END))
             return;
         
-        data.remove(length + 9, 1);
         data = slip_decode(data);
+        data.remove(length + 9, 1);
 
         if (m_portDebug)
             logInfo << "Packet received:" << data.toHex(':');
 
         memcpy(&crc, data.mid(length + 7, 2).constData(), sizeof(crc));
 
-        if (crc != getCRC16(reinterpret_cast <quint8*> (data.mid(7, length).data()), length))
+        if (crc != getCRC16(reinterpret_cast <quint8*> (data.mid(0, length + 7).data()), length + 7))
         {
             logWarning << QString("Packet %1 CRC mismatch").arg(QString(data.toHex(':')));
             return;
