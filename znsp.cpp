@@ -1,4 +1,5 @@
 #include <QtEndian>
+#include <QRandomGenerator>
 #include <QThread>
 #include "logger.h"
 #include "znsp.h"
@@ -417,7 +418,7 @@ bool ZNSP::startCoordinator(void) //WIP
     nwkFormationStruct network;
     bool withoutFormation = false;
 
-    quint64 ieeeAddress, extendedPanId;
+    quint64 ieeeAddress;
     quint32 channelMask;
     quint8 networkKey[16];
 
@@ -456,7 +457,30 @@ bool ZNSP::startCoordinator(void) //WIP
         return false;
     }
 
-    memcpy(&ieeeAddress, m_replyData.constData() + 1, sizeof(ieeeAddress));
+    memset(&ieeeAddress, 0, sizeof(ieeeAddress));
+
+    if (memcmp(&ieeeAddress, m_replyData.constData(), sizeof(ieeeAddress)) == 0)
+    {
+        QByteArray setAdress;
+        quint32 value = QRandomGenerator::global()->generate();
+
+        setAdress.append(reinterpret_cast <const char*> (&value), sizeof(value));
+        value = QRandomGenerator::global()->generate();
+        setAdress.append(reinterpret_cast <const char*> (&value), sizeof(value));
+        if (!sendRequest(ZNSP_NETWORK_LONG_ADDRESS_SET, setAdress) || m_replyStatus)
+        {
+            logWarning << "Local IEEE address set failed";
+            return false;
+        }
+
+        if (!sendRequest(ZNSP_NETWORK_LONG_ADDRESS_GET) || m_replyStatus)
+        {
+             logWarning << "Local IEEE address request failed";
+            return false;
+        }
+    }
+
+    memcpy(&ieeeAddress, m_replyData.constData(), sizeof(ieeeAddress));
     ieeeAddress = qToBigEndian(qFromLittleEndian(ieeeAddress));
     m_ieeeAddress = QByteArray(reinterpret_cast <char*> (&ieeeAddress), sizeof(ieeeAddress));
 
@@ -492,14 +516,6 @@ bool ZNSP::startCoordinator(void) //WIP
     //     logWarning << "Set policy" << QString::asprintf("0x%04x", request.id) << "request failed";
     // }
 
-    if (!sendRequest(ZNSP_NETWORK_EXTENDED_PAN_ID_GET) || m_replyStatus)
-    {
-        logWarning << "Local IEEE address request failed";
-        return false;
-    }
-
-    memcpy(&extendedPanId, m_replyData.constData(), sizeof(extendedPanId));
-
     if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x00))) || m_replyStatus)
     {
         logWarning << "Network start failed";
@@ -514,6 +530,7 @@ void ZNSP::softReset(void) //ready
 {
     m_packet_seq = -1;
    
+    //Reset by crashing, hope that they will add normal command to do reset :(
     nwkFormationStruct network;
     network.role = 0x00;
     network.maxChildren = 0x00;
@@ -523,9 +540,16 @@ void ZNSP::softReset(void) //ready
     {
         sendRequest(ZNSP_NETWORK_FORM, QByteArray(reinterpret_cast<char *>(&network), sizeof(network)));
     }
-    startCoordinator();
 
-    return;  
+    if (!startCoordinator())
+    {
+        logWarning << "Coordinator startup failed";
+        return;
+    }
+
+    m_resetTimer->stop();
+
+    return;
 }
 
 void ZNSP::parseData(QByteArray &buffer) //ready
