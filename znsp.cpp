@@ -242,7 +242,7 @@ QByteArray ZNSP::slip_decode(QByteArray &data)
     return decodedData;
 }
 
-bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify) //ready
+bool ZNSP::sendRequest(quint16 command, const QByteArray &data, bool notify)
 {
     QByteArray request, encodedRequest;
     frameHeaderStruct header;
@@ -416,6 +416,7 @@ void ZNSP::parsePacket(quint16 flags, quint16 command, const QByteArray &data) /
 bool ZNSP::startCoordinator(void) //WIP
 {
     nwkFormationStruct network;
+    nwkFormationNotifyStruct networkNotify;
     bool withoutFormation = false;
 
     quint64 ieeeAddress;
@@ -506,6 +507,12 @@ bool ZNSP::startCoordinator(void) //WIP
         return false;
     }
 
+    if (!sendRequest(ZNSP_NETWORK_TXPOWER_SET, QByteArray(1, static_cast <char> (0x05))) || m_replyStatus)
+    {
+        logWarning << "Set adapter logical type request failed";
+        return false;
+    }
+
     // for (int i = 0; i < m_policy.length(); i++)
     // {
     //     setTCPolicyStruct request = m_policy.at(i);
@@ -516,7 +523,8 @@ bool ZNSP::startCoordinator(void) //WIP
     //     logWarning << "Set policy" << QString::asprintf("0x%04x", request.id) << "request failed";
     // }
 
-    if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x00))) || m_replyStatus)
+    //0x01 - autostart for permit join (temporary solution)
+    if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x01))) || m_replyStatus)
     {
         logWarning << "Network start failed";
         return false;
@@ -526,7 +534,7 @@ bool ZNSP::startCoordinator(void) //WIP
     return true;
 }
 
-void ZNSP::softReset(void) //ready
+void ZNSP::softReset(void)
 {
     m_packet_seq = -1;
    
@@ -552,7 +560,7 @@ void ZNSP::softReset(void) //ready
     return;
 }
 
-void ZNSP::parseData(QByteArray &buffer) //ready
+void ZNSP::parseData(QByteArray &buffer)
 {
     while (!buffer.isEmpty())
     {
@@ -592,8 +600,15 @@ void ZNSP::parseData(QByteArray &buffer) //ready
     }
 }
 
-bool ZNSP::permitJoin(bool enabled) //ready
+bool ZNSP::permitJoin(bool enabled)
 {
+    return false;
+    /*
+        Wait for realisation:
+        static const esp_ncp_zb_func_t ncp_zb_func_table[] = {
+        ...
+        {ESP_NCP_NETWORK_PERMIT_JOINING, NULL},
+    */
     if (!sendRequest(ZNSP_NETWORK_PERMIT_JOINING, QByteArray(1, enabled ? 0xFF : 0x00)) || m_replyStatus)
     {
         logWarning << "Set permit join request failed";
@@ -602,7 +617,7 @@ bool ZNSP::permitJoin(bool enabled) //ready
     return true;
 }
 
-void ZNSP::handleQueue(void) //ready
+void ZNSP::handleQueue(void)
 {
     while (!m_queue.isEmpty())
     {

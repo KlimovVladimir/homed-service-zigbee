@@ -1,7 +1,7 @@
 #ifndef ZNSP_H
 #define ZNSP_H
 
-#define ZNPS_REQUEST_TIMEOUT                        2000
+#define ZNPS_REQUEST_TIMEOUT                        5000
 
 #define SLIP_END                                    0xC0
 #define SLIP_ESC                                    0xDB
@@ -153,6 +153,13 @@ struct nwkFormationStruct
     quint8 maxChildren;
     quint8 policy;
     quint32 keepAlive;
+};
+
+struct nwkFormationNotifyStruct
+{
+   quint64 ieeeAddress;
+   quint16 networkAddress;
+   quint8 channel;
 };
 
 #pragma pack(pop)
