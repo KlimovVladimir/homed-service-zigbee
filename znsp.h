@@ -195,12 +195,12 @@ private:
     QByteArray m_networkKey;
     //QList <setTCPolicyStruct> m_policy;
 
-    quint8 m_packet_seq;
+    quint8 m_sequenceId;
 
     quint16 getCRC16(quint8 *data, quint32 length);
     QByteArray slip_encode(QByteArray &data);
     QByteArray slip_decode(QByteArray &data);
-    inline quint8 getSeq() {m_packet_seq = (m_packet_seq + 1) % 255; return m_packet_seq;}
+    inline quint8 getSeq() {m_sequenceId = (m_sequenceId + 1) % 255; return m_sequenceId;}
 
     bool sendRequest(quint16 command, const QByteArray &data = QByteArray(), bool notify = false);
     void sendAck();
