@@ -523,7 +523,6 @@ bool ZNSP::startCoordinator(void) //WIP
     //     logWarning << "Set policy" << QString::asprintf("0x%04x", request.id) << "request failed";
     // }
 
-    //0x01 - autostart for permit join (temporary solution)
     if (!sendRequest(ZNSP_NETWORK_START, QByteArray(1, static_cast <char> (0x01))) || m_replyStatus)
     {
         logWarning << "Network start failed";
